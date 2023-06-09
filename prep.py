@@ -313,14 +313,24 @@ def build_elasticsearch(
         for beir_corpus_file in beir_corpus_files:
             with open(beir_corpus_file, 'r') as fin:
                 for l in fin:
-                    doc = json.loads(l)
-                    es_doc = {
-                        "_id": get_id(doc),
-                        "_op_type": "index",
-                        "refresh": "wait_for",
-                        config['keys']['body']: doc['text'],
-                        config['keys']['title']: doc['title'],
-                    }
+                    if beir_corpus_file.endswith(".jsonl"):
+                        doc = json.loads(l)
+                        es_doc = {
+                            "_id": get_id(doc),
+                            "_op_type": "index",
+                            "refresh": "wait_for",
+                            config['keys']['body']: doc['text'],
+                            config['keys']['title']: doc['title'],
+                        }
+                    elif beir_corpus_file.endswith(".tsv"):
+                        _id, text, title = l.split('\t')
+                        es_doc = {
+                            "_id": _id,
+                            "_op_type": "index",
+                            "refresh": "wait_for",
+                            config['keys']['body']: text,
+                            config['keys']['title']: title,
+                        }
                     yield es_doc
 
     # index
