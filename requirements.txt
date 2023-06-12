@@ -14,3 +14,6 @@ sentencepiece==0.1.83
 filelock
 tenacity
 spacy==3.5.0
+tiktoken
+numpy
+git+https://github.com/neulab/lti-llm-deployment

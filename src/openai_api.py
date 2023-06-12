@@ -13,7 +13,7 @@ from collections import defaultdict, Counter
 from filelock import FileLock
 from multiprocessing import Process, Queue, Lock
 from multiprocessing.managers import BaseManager
-from transformers import AutoTokenizer, GPT2TokenizerFast
+from transformers import AutoTokenizer, GPT2TokenizerFast, LlamaTokenizer
 from beir.datasets.data_loader import GenericDataLoader
 from beir.retrieval.search.lexical import BM25Search
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -22,6 +22,7 @@ from .templates import CtxPrompt, ApiReturn, RetrievalInstruction
 from .datasets import StrategyQA, WikiMultiHopQA, WikiAsp, ASQA
 from .utils import Utils, NoKeyAvailable, openai_api_call
 
+import llm_client
 
 logging.basicConfig(level=logging.INFO)
 
@@ -302,27 +303,52 @@ class QueryAgent:
                 model=responses['model'],
                 skip_len=0) for r, (q, _, _) in zip(responses['choices'], prompts)]
         else:
-            responses = openai_api_call(
-                api_key=api_key,
-                model=self.model,
-                prompt=prompts_to_issue,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                logprobs=0,
-                logit_bias=logit_bias,
-                frequency_penalty=self.frequency_penalty,
-                echo=echo,
-                **params)
+            if self.model == "alpaca-7b":
+                logging.info("prompting alpaca-7b...")
+                # params = {'max_tokens': 64, 'stop': '\n\n'}
+                responses = alpaca7b_client.prompt(
+                    prompts_to_issue,
+                    temperature=max(0.01, self.temperature),
+                    top_p=self.top_p,
+                    output_scores=True,
+                    remove_input_from_output=not echo)
 
-            generations = [ApiReturn(
-                prompt=q,
-                text=r['text'],
-                tokens=r['logprobs']['tokens'],
-                probs=[np.exp(lp) if lp is not None else lp for lp in r['logprobs']['token_logprobs']],
-                offsets=r['logprobs']['text_offset'],
-                finish_reason='length' if echo else r['finish_reason'],  # never stop in echo mode
-                model=responses['model'],
-                skip_len=len(q) if echo else 0) for r, (q, _, _) in zip(responses['choices'], prompts)]
+                #TODO: this should come from the server
+                text_offsets_list = llama_tokenizer([r.text for r in responses], return_offsets_mapping=True)['offset_mapping']
+                tokens_list = [[text[f[0]:f[1]] for f in offsets] for text, offsets in zip([r.text for r in responses], text_offsets_list)]
+
+                generations = [ApiReturn(
+                    prompt=q,
+                    text=r.text,
+                    tokens=tokens,
+                    probs=[0.5] * len(tokens), # TODO: use model.compute_transition_scores()
+                    offsets=[len(q) + t[0] for t in text_offsets],
+                    finish_reason='length' if echo else 'stop',  # never stop in echo mode
+                    model=self.model,
+                    skip_len=len(q) if echo else 0) for r, tokens, text_offsets, (q, _, _) in zip(responses, tokens_list, text_offsets_list, prompts)]
+            else:
+                responses = openai_api_call(
+                    api_key=api_key,
+                    model=self.model,
+                    prompt=prompts_to_issue,
+                    temperature=self.temperature,
+                    top_p=self.top_p,
+                    logprobs=0,
+                    logit_bias=logit_bias,
+                    frequency_penalty=self.frequency_penalty,
+                    echo=echo,
+                    **params)
+
+                generations = [ApiReturn(
+                    prompt=q,
+                    text=r['text'],
+                    tokens=r['logprobs']['tokens'],
+                    probs=[np.exp(lp) if lp is not None else lp for lp in r['logprobs']['token_logprobs']],
+                    offsets=r['logprobs']['text_offset'],
+                    finish_reason='length' if echo else r['finish_reason'],  # never stop in echo mode
+                    model=responses['model'],
+                    skip_len=len(q) if echo else 0) for r, (q, _, _) in zip(responses['choices'], prompts)]
+
 
         if self.debug:
             print('Params ->', params)
@@ -629,7 +655,9 @@ def write_worker(output_file: str, output_queue: Queue, size: int = None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='strategyqa', choices=['strategyqa', '2wikihop', 'wikiasp', 'asqa'])
-    parser.add_argument('--model', type=str, default='text-davinci-003', choices=['code-davinci-002', 'text-davinci-002', 'text-davinci-003', 'gpt-3.5-turbo-0301'])
+    parser.add_argument('--model', type=str, default='text-davinci-003', choices=['code-davinci-002', 'text-davinci-002', 'text-davinci-003', 'gpt-3.5-turbo-0301', 'alpaca-7b'])
+    parser.add_argument('--llm_server', type=str, default='localhost')
+    parser.add_argument('--alpaca_tokenizer', type=str, default='chavinlo/alpaca-native', help="model name or path")
     parser.add_argument('--input', type=str, default=None)
     parser.add_argument('--output', type=str, default=None)
     parser.add_argument('--index_name', type=str, default='test')
@@ -657,6 +685,9 @@ if __name__ == '__main__':
     random.seed(args.seed)
     np.random.seed(args.seed)
 
+    if args.model == "alpaca-7b":
+        alpaca7b_client = llm_client.Client(address=args.llm_server)
+
     # load retrieval corpus and index
     corpus, queries, qrels = None, None, None
     if args.build_index:
@@ -667,9 +698,21 @@ if __name__ == '__main__':
         exit()
 
     # init agent
-    ret_tokenizer = AutoTokenizer.from_pretrained('google/flan-t5-xl')
+    # ret_tokenizer = AutoTokenizer.from_pretrained('google/flan-t5-xl')
     prompt_tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
     prompt_tokenizer.pad_token = prompt_tokenizer.eos_token
+    if "alpaca" in args.model.lower():
+        logging.info("Loading LlamaTokenizer...")
+        # llama_tokenizer = AutoTokenizer.from_pretrained("")
+        local_files_only = os.path.exists(args.alpaca_tokenizer)
+        if not local_files_only:
+            logging.warning("If the tokenizer takes a long time to load, consider converting it to the new format and loading it from disk:" )
+            logging.warning("https://github.com/huggingface/transformers/issues/22642#issuecomment-1542181086")
+        llama_tokenizer = AutoTokenizer.from_pretrained(args.alpaca_tokenizer, local_files_only=local_files_only)
+        logging.info("Finished loading LlamaTokenizer")
+        llama_tokenizer.padding_side = "left"
+
+
 
     # default
     retrieval_kwargs = {
@@ -718,7 +761,7 @@ if __name__ == '__main__':
             retrieval_kwargs[k] = v
 
     retriever = BM25(
-        tokenizer=prompt_tokenizer,
+        tokenizer=llama_tokenizer if "alpaca" in args.model.lower() else prompt_tokenizer,
         dataset=(corpus, queries, qrels),
         index_name=args.index_name,
         use_decoder_input_ids=True,
@@ -737,7 +780,7 @@ if __name__ == '__main__':
         retrieval_kwargs['final_stop_sym'] = '!@#$%^&*()\n\n)(*&^%$#@!' if Utils.no_stop(model=args.model, dataset=args.dataset) else '\n\n'
     qagent = QueryAgent(
         model=args.model,
-        tokenizer=prompt_tokenizer,
+        tokenizer=llama_tokenizer if "alpaca" in args.model.lower() else prompt_tokenizer,
         max_generation_len=args.max_generation_len,
         retrieval_kwargs=retrieval_kwargs,
         temperature=args.temperature)

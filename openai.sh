@@ -14,8 +14,13 @@ config_filename="${config_filename%.*}"
 
 debug_batch_size=1
 batch_size=8
-model=text-davinci-003
+# model=text-davinci-003
+# model=code-davinci-002
+model=alpaca-7b
 temperature=0
+
+# alpaca_tokenizer="chavinlo/alpaca-native"
+alpaca_tokenizer="./models--chavinlo--alpaca-native/"
 
 output=output/${dataset}/${model}/${config_filename}.jsonl
 echo 'output to:' $output
@@ -63,10 +68,13 @@ else
     exit
 fi
 
+set -x
+
 # query api
 if [[ ${debug} == "true" ]]; then
     python -m src.openai_api \
         --model ${model} \
+        --alpaca_tokenizer ${alpaca_tokenizer} \
         --dataset ${dataset} ${input} ${prompt_type} \
         --config_file ${config_file} \
         --fewshot ${fewshot} \
@@ -94,6 +102,7 @@ joined_keys=$(join_by " " "${keys[@]:0:${num_keys}}")
 
 python -m src.openai_api \
     --model ${model} \
+    --alpaca_tokenizer ${alpaca_tokenizer} \
     --dataset ${dataset} ${input} ${prompt_type} \
     --config_file ${config_file} \
     --fewshot ${fewshot} \
