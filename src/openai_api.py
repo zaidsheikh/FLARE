@@ -22,6 +22,7 @@ from .templates import CtxPrompt, ApiReturn, RetrievalInstruction
 from .datasets import StrategyQA, WikiMultiHopQA, WikiAsp, ASQA
 from .utils import Utils, NoKeyAvailable, openai_api_call
 
+import torch
 import llm_client
 
 logging.basicConfig(level=logging.INFO)
@@ -314,18 +315,30 @@ class QueryAgent:
                     remove_input_from_output=not echo)
 
                 #TODO: this should come from the server
-                text_offsets_list = llama_tokenizer([r.text for r in responses], return_offsets_mapping=True)['offset_mapping']
+                tokenizer_output = llama_tokenizer([r.text for r in responses], return_offsets_mapping=True)
+                text_offsets_list = [off[1:] for off in tokenizer_output['offset_mapping']]
+                token_ids_list = [ids[1:] for ids in tokenizer_output["input_ids"]]
+
                 tokens_list = [[text[f[0]:f[1]] for f in offsets] for text, offsets in zip([r.text for r in responses], text_offsets_list)]
 
-                generations = [ApiReturn(
-                    prompt=q,
-                    text=r.text,
-                    tokens=tokens,
-                    probs=[0.5] * len(tokens), # TODO: use model.compute_transition_scores()
-                    offsets=[len(q) + t[0] for t in text_offsets],
-                    finish_reason='length' if echo else 'stop',  # never stop in echo mode
-                    model=self.model,
-                    skip_len=len(q) if echo else 0) for r, tokens, text_offsets, (q, _, _) in zip(responses, tokens_list, text_offsets_list, prompts)]
+                # TODO: verify that we are computing this correctly, should we just use model.compute_transition_scores() ?
+                logits_list = [torch.from_numpy(r.scores).float() for r in responses]
+                probs_list = [torch.nn.functional.softmax(logits, dim=-1) for logits in logits_list]
+                token_probs_list = [probs.gather(1, torch.tensor(token_ids).view(-1,1)).view(-1).tolist() for token_ids, probs in zip(token_ids_list, probs_list)]
+
+                generations = [
+                    ApiReturn(
+                        prompt=q,
+                        text=r.text,
+                        tokens=tokens,
+                        probs=token_probs,
+                        offsets=[len(q) + t[0] for t in text_offsets],
+                        finish_reason='length' if echo else 'stop',  # never stop in echo mode
+                        model=self.model,
+                        skip_len=len(q) if echo else 0
+                        )
+                        for r, tokens, token_probs, text_offsets, (q, _, _) in zip(responses, tokens_list, token_probs_list, text_offsets_list, prompts)
+                    ]
             else:
                 responses = openai_api_call(
                     api_key=api_key,
