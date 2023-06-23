@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
-debug=false
+debug=true
 
 source keys.sh
 num_keys=${#keys[@]}
 
 dataset=$1
 config_file=$2
+llm_server=${3:-"localhost"}
 
 config_filename=$(basename -- "${config_file}")
 config_filename="${config_filename%.*}"
@@ -30,14 +31,14 @@ if [[ ${dataset} == '2wikihop' ]]; then
     input="--input data/2wikimultihopqa/dev_beir"
     engine=elasticsearch
     index_name=wikipedia_dpr
-    fewshot=8
+    fewshot=3
     max_num_examples=500
     max_generation_len=256
 elif [[ ${dataset} == 'strategyqa' ]]; then
     input="--input data/strategyqa/dev_beir"
     engine=elasticsearch
     index_name=wikipedia_dpr
-    fewshot=6
+    fewshot=2
     max_num_examples=229
     max_generation_len=256
 elif [[ ${dataset} == 'asqa' ]]; then
@@ -45,7 +46,7 @@ elif [[ ${dataset} == 'asqa' ]]; then
     input="--input data/asqa/ASQA.json"
     engine=elasticsearch
     index_name=wikipedia_dpr
-    fewshot=8
+    fewshot=2
     max_num_examples=500
     max_generation_len=256
 elif [[ ${dataset} == 'asqa_hint' ]]; then
@@ -54,14 +55,14 @@ elif [[ ${dataset} == 'asqa_hint' ]]; then
     input="--input data/asqa/ASQA.json"
     engine=elasticsearch
     index_name=wikipedia_dpr
-    fewshot=8
+    fewshot=2
     max_num_examples=500
     max_generation_len=256
 elif [[ ${dataset} == 'wikiasp' ]]; then
     input="--input \"data/wikiasp/matched_with_bing_test.500.annotated\""
     engine=bing
     index_name=wikiasp
-    fewshot=4
+    fewshot=2
     max_num_examples=500
     max_generation_len=512
 else
@@ -75,6 +76,7 @@ if [[ ${debug} == "true" ]]; then
     python -m src.openai_api \
         --model ${model} \
         --alpaca_tokenizer ${alpaca_tokenizer} \
+        --llm_server $llm_server \
         --dataset ${dataset} ${input} ${prompt_type} \
         --config_file ${config_file} \
         --fewshot ${fewshot} \
@@ -103,6 +105,7 @@ joined_keys=$(join_by " " "${keys[@]:0:${num_keys}}")
 python -m src.openai_api \
     --model ${model} \
     --alpaca_tokenizer ${alpaca_tokenizer} \
+    --llm_server $llm_server \
     --dataset ${dataset} ${input} ${prompt_type} \
     --config_file ${config_file} \
     --fewshot ${fewshot} \

@@ -16,4 +16,4 @@ tenacity
 spacy==3.5.0
 tiktoken
 numpy
-git+https://github.com/neulab/lti-llm-deployment
+git+https://github.com/neulab/lti-llm-deployment@fcc523d986e79420b44028e02f8fc4e8cc464bee
