@@ -3,27 +3,33 @@ set -e
 
 debug=true
 
+dataset=$1
+config_file=$(readlink -ve $2) || exit 1
+llm_server=${3:-"localhost:5000"}
+
+cd $(dirname $0)
+
 source keys.sh
 num_keys=${#keys[@]}
-
-dataset=$1
-config_file=$2
-llm_server=${3:-"localhost"}
 
 config_filename=$(basename -- "${config_file}")
 config_filename="${config_filename%.*}"
 
 debug_batch_size=1
-batch_size=8
+batch_size=1
 # model=text-davinci-003
 # model=code-davinci-002
-model=alpaca-7b
+# model=alpaca-7b
+model=lmsys/vicuna-7b-v1.3
+export OPENAI_API_BASE="http://${llm_server}/v1"
+
 temperature=0
 
 # alpaca_tokenizer="chavinlo/alpaca-native"
-alpaca_tokenizer="./models--chavinlo--alpaca-native/"
+# alpaca_tokenizer="./models--chavinlo--alpaca-native/"
 
 output=output/${dataset}/${model}/${config_filename}.jsonl
+mkdir -p $(dirname $output)
 echo 'output to:' $output
 
 prompt_type=""
@@ -75,8 +81,6 @@ set -x
 if [[ ${debug} == "true" ]]; then
     python -m src.openai_api \
         --model ${model} \
-        --alpaca_tokenizer ${alpaca_tokenizer} \
-        --llm_server $llm_server \
         --dataset ${dataset} ${input} ${prompt_type} \
         --config_file ${config_file} \
         --fewshot ${fewshot} \
@@ -104,8 +108,6 @@ joined_keys=$(join_by " " "${keys[@]:0:${num_keys}}")
 
 python -m src.openai_api \
     --model ${model} \
-    --alpaca_tokenizer ${alpaca_tokenizer} \
-    --llm_server $llm_server \
     --dataset ${dataset} ${input} ${prompt_type} \
     --config_file ${config_file} \
     --fewshot ${fewshot} \

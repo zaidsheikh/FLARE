@@ -340,6 +340,7 @@ class QueryAgent:
                         for r, tokens, token_probs, text_offsets, (q, _, _) in zip(responses, tokens_list, token_probs_list, text_offsets_list, prompts)
                     ]
             else:
+                api_base = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1")
                 responses = openai_api_call(
                     api_key=api_key,
                     model=self.model,
@@ -347,7 +348,7 @@ class QueryAgent:
                     temperature=self.temperature,
                     top_p=self.top_p,
                     logprobs=0,
-                    logit_bias=logit_bias,
+                    logit_bias=logit_bias if "openai" in api_base else None, # we are using vllm which currently doesn't support logit_bias
                     frequency_penalty=self.frequency_penalty,
                     echo=echo,
                     **params)
@@ -668,7 +669,7 @@ def write_worker(output_file: str, output_queue: Queue, size: int = None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='strategyqa', choices=['strategyqa', '2wikihop', 'wikiasp', 'asqa'])
-    parser.add_argument('--model', type=str, default='text-davinci-003', choices=['code-davinci-002', 'text-davinci-002', 'text-davinci-003', 'gpt-3.5-turbo-0301', 'alpaca-7b'])
+    parser.add_argument('--model', type=str, default='text-davinci-003', choices=['code-davinci-002', 'text-davinci-002', 'text-davinci-003', 'gpt-3.5-turbo-0301', 'alpaca-7b', 'lmsys/vicuna-7b-v1.3'])
     parser.add_argument('--llm_server', type=str, default='localhost')
     parser.add_argument('--alpaca_tokenizer', type=str, default='chavinlo/alpaca-native', help="model name or path")
     parser.add_argument('--input', type=str, default=None)
