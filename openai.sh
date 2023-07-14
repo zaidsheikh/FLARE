@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S bash -i
 set -e
 
 debug=true
@@ -6,6 +6,8 @@ debug=true
 dataset=$1
 config_file=$(readlink -ve $2) || exit 1
 llm_server=${3:-"localhost:5000"}
+
+conda activate flare
 
 cd $(dirname $0)
 
