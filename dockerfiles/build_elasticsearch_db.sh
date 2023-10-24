@@ -11,4 +11,6 @@ wget -O /FLARE/data/dpr/psgs_w100.tsv.gz https://dl.fbaipublicfiles.com/dpr/wiki
 gunzip /FLARE/data/dpr/psgs_w100.tsv.gz
 
 # build index
+cd /FLARE/
+conda activate flare
 python prep.py --task build_elasticsearch --inp data/dpr/psgs_w100.tsv wikipedia_dpr

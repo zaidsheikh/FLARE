@@ -7,7 +7,11 @@ dataset=$1
 config_file=$(readlink -ve $2) || exit 1
 llm_server=${3:-"localhost:5000"}
 
-conda activate flare
+. /opt/conda/etc/profile.d/conda.sh
+[[ $CONDA_DEFAULT_ENV == "base" ]] || eval $(command conda shell.bash hook)
+conda activate flare 2>/dev/null
+[[ $CONDA_DEFAULT_ENV == "flare" ]] || source activate cmulab
+[[ $CONDA_DEFAULT_ENV == "flare" ]] || { echo "Couldn't activate conda env flare. Exiting!"; exit 1; }
 
 cd $(dirname $0)
 
