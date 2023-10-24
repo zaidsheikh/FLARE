@@ -12,7 +12,7 @@ docker run -it --gpus all \
     -v ${base_dir}/data/:/FLARE/data/ \
     -v ${elasticsearch_dir}/data:/FLARE/elasticsearch-7.17.9/data \
     -v ${elasticsearch_dir}/config/:/FLARE/elasticsearch-7.17.9/config/ \
-    zs12/flare:v0.2.1 /bin/bash
+    zs12/flare:v0.2.3 /bin/bash
 
 # Run these manually once the docker container boots up:
 # /FLARE/dockerfiles/start_elasticsearch.sh
