@@ -19,7 +19,7 @@ from beir.retrieval.search.lexical import BM25Search
 from tenacity import retry, stop_after_attempt, wait_fixed
 from .retriever import BM25
 from .templates import CtxPrompt, ApiReturn, RetrievalInstruction
-from .datasets import StrategyQA, WikiMultiHopQA, WikiAsp, ASQA
+from .datasets import StrategyQA, WikiMultiHopQA, WikiAsp, ASQA, XLSum
 from .utils import Utils, NoKeyAvailable, openai_api_call
 
 import torch
@@ -668,8 +668,8 @@ def write_worker(output_file: str, output_queue: Queue, size: int = None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='strategyqa', choices=['strategyqa', '2wikihop', 'wikiasp', 'asqa'])
-    parser.add_argument('--model', type=str, default='text-davinci-003', choices=['code-davinci-002', 'text-davinci-002', 'text-davinci-003', 'gpt-3.5-turbo-0301', 'alpaca-7b', 'lmsys/vicuna-7b-v1.3'])
+    parser.add_argument('--dataset', type=str, default='strategyqa', choices=['strategyqa', '2wikihop', 'wikiasp', 'asqa', 'xlsum'])
+    parser.add_argument('--model', type=str, default='text-davinci-003')
     parser.add_argument('--llm_server', type=str, default='localhost')
     parser.add_argument('--alpaca_tokenizer', type=str, default='chavinlo/alpaca-native', help="model name or path")
     parser.add_argument('--input', type=str, default=None)
@@ -808,6 +808,8 @@ if __name__ == '__main__':
         data = ASQA(json_file=args.input, prompt_type=retrieval_kwargs['prompt_type'])
     elif args.dataset == 'wikiasp':
         data = WikiAsp(args.input, prompt_type=retrieval_kwargs['prompt_type'])
+    elif args.dataset == 'xlsum':
+        data = XLSum(args.input, prompt_type=retrieval_kwargs['prompt_type'])
     else:
         raise NotImplementedError
     if qagent.use_ctx_for_examplars == 'ret':

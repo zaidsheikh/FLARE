@@ -412,8 +412,9 @@ if __name__ == '__main__':
     elif args.task == 'build_elasticsearch':
         beir_corpus_file_pattern, index_name = args.inp  # 'wikipedia_dpr'
         get_id_default = lambda doc: str(doc['_id'])
+        get_id_xlsum = lambda doc: str(doc['id'])
         get_id_lm = lambda doc: doc['metadata']['line'] + '.' + str(doc['_id'])
-        build_elasticsearch(beir_corpus_file_pattern, index_name, get_id=get_id_default)
+        build_elasticsearch(beir_corpus_file_pattern, index_name, get_id=get_id_xlsum)
 
     elif args.task == 'jsonl_to_keyvalue':
         jsonl_file = args.inp[0]

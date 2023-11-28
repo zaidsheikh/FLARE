@@ -1,17 +1,20 @@
 #!/usr/bin/env -S bash -i
-set -e
+
+[ $# -lt 2 ] && { echo "Usage: $0 <dataset> <config_file> [openai_compatible_llm_server] [model]"; exit 1; }
 
 debug=true
 
 dataset=$1
 config_file=$(readlink -ve $2) || exit 1
 llm_server=${3:-"localhost:5000"}
+model=${4:-"lmsys/vicuna-7b-v1.3"}
 
-. /opt/conda/etc/profile.d/conda.sh
+. /opt/conda/etc/profile.d/conda.sh 2>/dev/null
 [[ $CONDA_DEFAULT_ENV == "base" ]] || eval $(command conda shell.bash hook)
 conda activate flare 2>/dev/null
 [[ $CONDA_DEFAULT_ENV == "flare" ]] || source activate flare
 [[ $CONDA_DEFAULT_ENV == "flare" ]] || { echo "Couldn't activate conda env flare. Exiting!"; exit 1; }
+which python
 
 cd $(dirname $0)
 
@@ -23,10 +26,6 @@ config_filename="${config_filename%.*}"
 
 debug_batch_size=1
 batch_size=1
-# model=text-davinci-003
-# model=code-davinci-002
-# model=alpaca-7b
-model=lmsys/vicuna-7b-v1.3
 export OPENAI_API_BASE="http://${llm_server}/v1"
 
 temperature=0
@@ -75,6 +74,13 @@ elif [[ ${dataset} == 'wikiasp' ]]; then
     engine=bing
     index_name=wikiasp
     fewshot=2
+    max_num_examples=500
+    max_generation_len=512
+elif [[ ${dataset} == 'xlsum' ]]; then
+    input="--input data/xlsum/burmese_test.jsonl"
+    engine=elasticsearch
+    index_name=xlsum_burmese_doc
+    fewshot=0
     max_num_examples=500
     max_generation_len=512
 else

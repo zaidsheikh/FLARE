@@ -633,6 +633,38 @@ class WikiAsp(BaseDataset):
         return data.map(map_fn)
 
 
+class XLSum(BaseDataset):
+
+    standard_demo_input_template = cot_test_input_template = lambda self, ques: f'Title: {ques}\nContent:\n'
+    standard_test_input_template = cot_test_input_template = lambda self, ques: f'Title: {ques}\nContent:\n'
+    standard_output_template = lambda self, cot, ans: ans
+
+    def __init__(self, jsonl_file: str, prompt_type: str = 'standard'):
+        self.demo_input_template = getattr(self, f'{prompt_type}_demo_input_template')
+        self.test_input_template = getattr(self, f'{prompt_type}_test_input_template')
+        self.output_template = getattr(self, f'{prompt_type}_output_template')
+        self.dataset = self.load_data(jsonl_file)
+
+    def load_data(self, jsonl_file: str):
+        dataset = []
+        with open(jsonl_file, 'r') as fin:
+            for l in fin:
+                example = json.loads(l) # ['id', 'url', 'title', 'summary', 'text']
+                qid = example['id']
+                text = example['text']
+                title = example['title']
+                summary = example['summary']
+                output = self.output_template(cot=None, ans=summary)
+                dataset.append({
+                    'qid': qid,
+                    'question': title,
+                    'text': text,
+                    'answer': summary,
+                    'gold_output': output,
+                })
+        return Dataset.from_list(dataset)
+
+
 class ASQA(BaseDataset):
     general_hint_jsonl_file = 'data/asqa/ASQA_test_general_hint.jsonl'
     general_hint_in_input_examplars: List[Dict] = [
