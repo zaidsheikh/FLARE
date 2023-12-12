@@ -23,6 +23,8 @@ from beir.retrieval.search.lexical import BM25Search
 from models.datasets import WikiMultiHopQA, WikiAsp, ASQA
 from models.templates import CtxPrompt
 from models.utils import Utils
+import spacy
+spacy_en = spacy.load('en_core_web_sm')
 
 
 def eval(
@@ -281,10 +283,42 @@ def eval(
         print('')
 
 
+# function to split text into smaller chunks based on a list of punctuation characters
+def split_text(text, puncts):
+    text = text.strip()
+    if len(text) == 0:
+        return []
+    if len(puncts) == 0:
+        return [text]
+    if len(puncts) == 1:
+        return text.split(puncts[0])
+    for punct in puncts:
+        text = text.replace(punct, puncts[0])
+    return text.split(puncts[0])
+
+# function to split text into smaller chunks composed of n sentences each
+def split_text_n_sentences(text, n=3):
+    text = text.strip()
+    if len(text) == 0:
+        return []
+    sentences = [sent.text for sent in spacy_en(text).sents]
+    chunks = []
+    chunk = ''
+    for i, sentence in enumerate(sentences):
+        if i % n == 0 and i > 0:
+            chunks.append(chunk)
+            chunk = ''
+        chunk += sentence + ' '
+    if chunk != '':
+        chunks.append(chunk)
+    return chunks
+
+
 def build_elasticsearch(
     beir_corpus_file_pattern: str,
     index_name: str,
     get_id: Callable = None,
+    chunk_size_sent: int = 0,
 ):
     beir_corpus_files = glob.glob(beir_corpus_file_pattern)
     print(f'#files {len(beir_corpus_files)}')
@@ -312,16 +346,33 @@ def build_elasticsearch(
     def generate_actions():
         for beir_corpus_file in beir_corpus_files:
             with open(beir_corpus_file, 'r') as fin:
-                for l in fin:
+                for line_number, l in enumerate(fin):
+                    if line_number > 1000:
+                        break
                     if beir_corpus_file.endswith(".jsonl"):
                         doc = json.loads(l)
-                        es_doc = {
-                            "_id": get_id(doc),
-                            "_op_type": "index",
-                            "refresh": "wait_for",
-                            config['keys']['body']: doc['text'],
-                            config['keys']['title']: doc['title'],
-                        }
+                        if chunk_size_sent > 0:
+                            chunks = split_text_n_sentences(doc['text'], n=chunk_size_sent)
+                            for i, chunk in enumerate(chunks):
+                                es_doc = {
+                                    "_id": f'{get_id(doc)}_{i}',
+                                    "original_id": get_id(doc),
+                                    "_op_type": "index",
+                                    "refresh": "wait_for",
+                                    config['keys']['body']: chunk,
+                                    config['keys']['title']: doc['title'],
+                                }
+                                yield es_doc
+                        else:
+                            es_doc = {
+                                "_id": get_id(doc),
+                                "original_id": get_id(doc),
+                                "_op_type": "index",
+                                "refresh": "wait_for",
+                                config['keys']['body']: doc['text'],
+                                config['keys']['title']: doc['title'],
+                            }
+                            yield es_doc
                     elif beir_corpus_file.endswith(".tsv"):
                         _id, text, title = l.split('\t')
                         es_doc = {
@@ -331,7 +382,7 @@ def build_elasticsearch(
                             config['keys']['body']: text,
                             config['keys']['title']: title,
                         }
-                    yield es_doc
+                        yield es_doc
 
     # index
     progress = tqdm(unit='docs')
@@ -369,7 +420,7 @@ if __name__ == '__main__':
         'eval', 'build_elasticsearch', 'jsonl_to_keyvalue'])
     parser.add_argument('--inp', type=str, default=None, nargs='+', help='input file')
     parser.add_argument('--dataset', type=str, default='2wikihop', help='input dataset', choices=[
-        'strategyqa', '2wikihop', 'wikiasp', 'asqa'])
+        'strategyqa', '2wikihop', 'wikiasp', 'asqa', 'xlsum'])
     parser.add_argument('--model', type=str, default='gpt-3.5-turbo-0301', help='model name', choices=[
         'code-davinci-002', 'gpt-3.5-turbo-0301'])
     parser.add_argument('--out', type=str, default=None, help='output file')
@@ -398,6 +449,11 @@ if __name__ == '__main__':
                 dataset=dataset,
                 jsonl_files=jsonl_files,
                 beir_dir=None)
+        elif dataset == 'xlsum':
+            eval(model=args.model,
+                dataset=dataset,
+                jsonl_files=jsonl_files,
+                beir_dir=None)
         elif dataset in {'asqa'}:
             eval(model=args.model,
                 dataset=dataset,
@@ -411,10 +467,10 @@ if __name__ == '__main__':
 
     elif args.task == 'build_elasticsearch':
         beir_corpus_file_pattern, index_name = args.inp  # 'wikipedia_dpr'
-        get_id_default = lambda doc: str(doc['_id'])
-        get_id_xlsum = lambda doc: str(doc['id'])
-        get_id_lm = lambda doc: doc['metadata']['line'] + '.' + str(doc['_id'])
-        build_elasticsearch(beir_corpus_file_pattern, index_name, get_id=get_id_xlsum)
+        if args.dataset == "xlsum":
+            build_elasticsearch(beir_corpus_file_pattern, index_name, chunk_size_sent=3, get_id=lambda doc: str(doc['id']))
+        else:
+            build_elasticsearch(beir_corpus_file_pattern, index_name, get_id=lambda doc: str(doc['_id']))
 
     elif args.task == 'jsonl_to_keyvalue':
         jsonl_file = args.inp[0]

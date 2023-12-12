@@ -14,6 +14,7 @@ model=${4:-"lmsys/vicuna-7b-v1.3"}
 conda activate flare 2>/dev/null
 [[ $CONDA_DEFAULT_ENV == "flare" ]] || source activate flare
 [[ $CONDA_DEFAULT_ENV == "flare" ]] || { echo "Couldn't activate conda env flare. Exiting!"; exit 1; }
+echo $CONDA_DEFAULT_ENV
 which python
 
 cd $(dirname $0)
@@ -77,9 +78,9 @@ elif [[ ${dataset} == 'wikiasp' ]]; then
     max_num_examples=500
     max_generation_len=512
 elif [[ ${dataset} == 'xlsum' ]]; then
-    input="--input data/xlsum/burmese_test.jsonl"
+    input="--input data/xlsum/english_test.jsonl"
     engine=elasticsearch
-    index_name=xlsum_burmese_doc
+    index_name=xlsum_english_chunks
     fewshot=0
     max_num_examples=500
     max_generation_len=512
