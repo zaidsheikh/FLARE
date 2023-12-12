@@ -11,6 +11,7 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.lexical import BM25Search
 from beir.retrieval.search.lexical.elastic_search import ElasticSearch
 from .bing import search_bing_batch
+import json
 
 
 def get_random_doc_id():
@@ -96,6 +97,7 @@ class BM25:
         decoder_input_ids: torch.LongTensor = None,  # (bs, decoder_seq_len)
         encoder_texts: List[str] = None,  # (bs, encoder_seq_len)
         decoder_texts: List[str] = None,  # (bs, encoder_seq_len)
+        filter_ids: List[str] = None,
         ctx_ids: np.ndarray = None,  # (bs, topk)
         qids: np.ndarray = None,  # (bs,)
         topk: int = 1,
@@ -167,7 +169,8 @@ class BM25:
 
             # retrieve
             #print('REAL QUERY:', queries[0])
-            results: Dict[str, Dict[str, Tuple[float, str]]] = self.retriever.retrieve(self.corpus, dict(zip(range(len(queries)), queries)), disable_tqdm=True)
+            filter_ids = filter_ids or ([None] * len(queries))
+            results: Dict[str, Dict[str, Tuple[float, str]]] = self.retriever.retrieve(self.corpus, dict(zip(range(len(queries)), list(zip(queries, filter_ids)))), disable_tqdm=True)
 
             # prepare outputs
             docids: List[str] = []
@@ -222,7 +225,7 @@ class BM25:
 
 
 
-def bm25search_search(self, corpus: Dict[str, Dict[str, str]], queries: Dict[str, str], top_k: int, *args, **kwargs) -> Dict[str, Dict[str, float]]:
+def bm25search_search(self, corpus: Dict[str, Dict[str, str]], queries: Dict[str, Tuple[str, str]], top_k: int, *args, **kwargs) -> Dict[str, Dict[str, float]]:
     # Index the corpus within elastic-search
     # False, if the corpus has been already indexed
     if self.initialize:
@@ -232,6 +235,8 @@ def bm25search_search(self, corpus: Dict[str, Dict[str, str]], queries: Dict[str
 
     #retrieve results from BM25
     query_ids = list(queries.keys())
+    filter_ids = [queries[qid][1] for qid in query_ids]
+    queries = [queries[qid][0] for qid in query_ids]
     queries = [queries[qid] for qid in query_ids]
 
     final_results: Dict[str, Dict[str, Tuple[float, str]]] = {}
@@ -239,6 +244,7 @@ def bm25search_search(self, corpus: Dict[str, Dict[str, str]], queries: Dict[str
         query_ids_batch = query_ids[start_idx:start_idx+self.batch_size]
         results = self.es.lexical_multisearch(
             texts=queries[start_idx:start_idx+self.batch_size],
+            filter_ids=filter_ids[start_idx:start_idx+self.batch_size],
             top_hits=top_k)
         for (query_id, hit) in zip(query_ids_batch, results):
             scores = {}
@@ -251,7 +257,7 @@ def bm25search_search(self, corpus: Dict[str, Dict[str, str]], queries: Dict[str
 BM25Search.search = bm25search_search
 
 
-def elasticsearch_lexical_multisearch(self, texts: List[str], top_hits: int, skip: int = 0) -> Dict[str, object]:
+def elasticsearch_lexical_multisearch(self, texts: List[str], filter_ids: List[str] = None, top_hits: int = 10, skip: int = 0) -> Dict[str, object]:
         """Multiple Query search in Elasticsearch
 
         Args:
@@ -266,20 +272,45 @@ def elasticsearch_lexical_multisearch(self, texts: List[str], top_hits: int, ski
 
         assert skip + top_hits <= 10000, "Elastic-Search Window too large, Max-Size = 10000"
 
-        for text in texts:
+        filter_ids = filter_ids or ([None] * len(texts))
+        for text, fid in zip(texts, filter_ids):
             req_head = {"index" : self.index_name, "search_type": "dfs_query_then_fetch"}
-            req_body = {
-                "_source": True, # No need to return source objects
-                "query": {
-                    "multi_match": {
-                        "query": text, # matching query with both text and title fields
-                        "type": "best_fields",
-                        "fields": [self.title_key, self.text_key],
-                        "tie_breaker": 0.5
+            if fid is not None:
+                req_body = {
+                    "_source": True, # No need to return source objects
+                    "query": {
+                        "bool": {
+                            "must": {
+                                "multi_match": {
+                                    "query": text,  # matching query with both text and title fields
+                                    "type": "best_fields",
+                                    "fields": [self.title_key, self.text_key],
+                                    "tie_breaker": 0.5
+                                },
+                            },
+                            "filter": {
+                                "term": {
+                                    "original_id.keyword": fid
+                                }
+                            }
+                        },
+                    },
+                    "size": skip + top_hits, # The same paragraph will occur in results
+                }
+            else:
+                req_body = {
+                    "_source": True, # No need to return source objects
+                    "query": {
+                        "multi_match": {
+                            "query": text, # matching query with both text and title fields
+                            "type": "best_fields",
+                            "fields": [self.title_key, self.text_key],
+                            "tie_breaker": 0.5
                         }
                     },
-                "size": skip + top_hits, # The same paragraph will occur in results
+                    "size": skip + top_hits, # The same paragraph will occur in results
                 }
+            print(json.dumps(req_body, indent=2))
             request.extend([req_head, req_body])
 
         res = self.es.msearch(body = request)

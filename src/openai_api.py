@@ -19,7 +19,7 @@ from beir.retrieval.search.lexical import BM25Search
 from tenacity import retry, stop_after_attempt, wait_fixed
 from .retriever import BM25
 from .templates import CtxPrompt, ApiReturn, RetrievalInstruction
-from .datasets import StrategyQA, WikiMultiHopQA, WikiAsp, ASQA
+from .datasets import StrategyQA, WikiMultiHopQA, WikiAsp, ASQA, XLSum
 from .utils import Utils, NoKeyAvailable, openai_api_call
 
 import torch
@@ -173,6 +173,7 @@ class QueryAgent:
     def retrieve(
         self,
         queries: List[Union[str, List[str]]],
+        filter_ids: List[str] = None,
         is_question: bool = False,
         debug: bool = False
     ):
@@ -211,8 +212,11 @@ class QueryAgent:
             ctx_texts = np.array(ctx_texts)
             assert ctx_ids.shape == ctx_texts.shape == (len(queries), self.ret_topk), f'{ctx_ids.shape}, {ctx_texts.shape}, {queries}'
         else:
+            print(f'query: {queries}')
+            filter_ids = filter_ids or ([None] * len(queries))
             ctx_ids, ctx_texts = self.retriever.retrieve_and_prepare(
                 decoder_texts=queries,
+                filter_ids=filter_ids,
                 topk=self.ret_topk,
                 max_query_length=mql)
         return ctx_ids, ctx_texts
@@ -427,7 +431,8 @@ class QueryAgent:
             if self.look_ahead_steps:  # generate a fixed number tokens for retrieval
                 if (self.look_ahead_pre_retrieval in {'first', 'first-keep'} and step_ind == 0) or self.look_ahead_pre_retrieval == 'all':  # pre-retrieval for look ahead
                     queries_to_issue = [q.get_query_for_retrieval() for i, q in queries]
-                    ctx_ids, ctx_texts = self.retrieve(queries_to_issue, is_question=first_ret)
+                    filter_ids = [q.qid.rsplit('_', 1)[0] for i, q in queries]
+                    ctx_ids, ctx_texts = self.retrieve(queries_to_issue, filter_ids=filter_ids, is_question=first_ret)
                     for _i, (i, q) in enumerate(queries):
                         ret_id, ret_text = ctx_ids[_i].tolist(), ctx_texts[_i].tolist()
                         final_retrievals[i].append((queries_to_issue[_i], ret_id))
@@ -668,8 +673,8 @@ def write_worker(output_file: str, output_queue: Queue, size: int = None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='strategyqa', choices=['strategyqa', '2wikihop', 'wikiasp', 'asqa'])
-    parser.add_argument('--model', type=str, default='text-davinci-003', choices=['code-davinci-002', 'text-davinci-002', 'text-davinci-003', 'gpt-3.5-turbo-0301', 'alpaca-7b', 'lmsys/vicuna-7b-v1.3'])
+    parser.add_argument('--dataset', type=str, default='strategyqa', choices=['strategyqa', '2wikihop', 'wikiasp', 'asqa', 'xlsum'])
+    parser.add_argument('--model', type=str, default='text-davinci-003')
     parser.add_argument('--llm_server', type=str, default='localhost')
     parser.add_argument('--alpaca_tokenizer', type=str, default='chavinlo/alpaca-native', help="model name or path")
     parser.add_argument('--input', type=str, default=None)
@@ -808,6 +813,8 @@ if __name__ == '__main__':
         data = ASQA(json_file=args.input, prompt_type=retrieval_kwargs['prompt_type'])
     elif args.dataset == 'wikiasp':
         data = WikiAsp(args.input, prompt_type=retrieval_kwargs['prompt_type'])
+    elif args.dataset == 'xlsum':
+        data = XLSum(args.input, prompt_type=retrieval_kwargs['prompt_type'])
     else:
         raise NotImplementedError
     if qagent.use_ctx_for_examplars == 'ret':
