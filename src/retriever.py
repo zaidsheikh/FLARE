@@ -290,7 +290,7 @@ def elasticsearch_lexical_multisearch(self, texts: List[str], filter_ids: List[s
                             },
                             "filter": {
                                 "term": {
-                                    "_id": fid
+                                    "original_id.keyword": fid
                                 }
                             }
                         },
