@@ -43,6 +43,14 @@ Use the following command to run FLARE on the 2WikiMultihopQA dataset (500 examp
 ./openai.sh 2wikihop configs/2wikihop_flare_config.json
 ```
 
+## Example usage
+```
+# This uses the XLSum dataset which can be downloaded from https://huggingface.co/datasets/csebuetnlp/xlsum/tree/main/data
+cd FLARE/
+python prep.py --dataset xlsum --task build_elasticsearch --inp data/xlsum/english_test.jsonl xlsum_english_chunks
+./openai.sh xlsum configs/xlsum_flare_config.json ${openai_compatible_llm_server}:${port} /data/datasets/models/huggingface/meta-llama/Llama-2-7b-chat-hf/
+```
+
 ## Citation
 ```
 @article{jiang2023flare,
