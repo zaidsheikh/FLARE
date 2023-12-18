@@ -635,8 +635,8 @@ class WikiAsp(BaseDataset):
 
 class XLSum(BaseDataset):
 
-    standard_demo_input_template = cot_test_input_template = lambda self, ques: f'Title: {ques}\nContent:\n'
-    standard_test_input_template = cot_test_input_template = lambda self, ques: f'Title: {ques}\nContent:\n'
+    standard_demo_input_template = cot_test_input_template = lambda self, ques: f'Title: {ques}\nSummary:\n'
+    standard_test_input_template = cot_test_input_template = lambda self, ques: f'Title: {ques}\nSummary:\n'
     standard_output_template = lambda self, cot, ans: ans
 
     def __init__(self, jsonl_file: str, prompt_type: str = 'standard'):

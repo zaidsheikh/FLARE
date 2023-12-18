@@ -2,14 +2,25 @@
 
 [ $# -lt 2 ] && { echo "Usage: $0 <dataset> <config_file> [openai_compatible_llm_server] [model]"; exit 1; }
 
-debug=true
+debug=${DEBUG:-true}
+if [[ ${debug} == true ]]; then
+    echo "WARNING: Running in interactive/debug mode. export DEBUG=false to run in batch mode."
+fi
 
 dataset=$1
 config_file=$(readlink -ve $2) || exit 1
 llm_server=${3:-"localhost:5000"}
 model=${4:-"lmsys/vicuna-7b-v1.3"}
 
-. /opt/conda/etc/profile.d/conda.sh 2>/dev/null
+if [[ -f ~/miniconda3/etc/profile.d/conda.sh ]]; then
+ . ~/miniconda3/etc/profile.d/conda.sh
+elif [[ -f ~/anaconda3/etc/profile.d/conda.sh ]]; then
+ . ~/anaconda3/etc/profile.d/conda.sh
+elif [[ -f /opt/conda/etc/profile.d/conda.sh ]]; then
+ . /opt/conda/etc/profile.d/conda.sh
+fi
+
+conda deactivate
 [[ $CONDA_DEFAULT_ENV == "base" ]] || eval $(command conda shell.bash hook)
 conda activate flare 2>/dev/null
 [[ $CONDA_DEFAULT_ENV == "flare" ]] || source activate flare
@@ -30,6 +41,7 @@ batch_size=1
 export OPENAI_API_BASE="http://${llm_server}/v1"
 
 temperature=0
+
 
 # alpaca_tokenizer="chavinlo/alpaca-native"
 # alpaca_tokenizer="./models--chavinlo--alpaca-native/"
@@ -78,9 +90,9 @@ elif [[ ${dataset} == 'wikiasp' ]]; then
     max_num_examples=500
     max_generation_len=512
 elif [[ ${dataset} == 'xlsum' ]]; then
-    input="--input data/xlsum/english_test.jsonl"
+    input="--input data/xlsum/burmese_test_translated.jsonl"
     engine=elasticsearch
-    index_name=xlsum_english_chunks
+    index_name=xlsum_burmese_translated_chunks
     fewshot=0
     max_num_examples=500
     max_generation_len=512

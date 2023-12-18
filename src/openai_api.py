@@ -357,10 +357,15 @@ class QueryAgent:
                     echo=echo,
                     **params)
 
+                if self.debug:
+                    print("Tokens in responses:")
+                    for choices in responses["choices"]:
+                        print(choices["logprobs"]["tokens"])
+
                 generations = [ApiReturn(
                     prompt=q,
                     text=r['text'],
-                    tokens=r['logprobs']['tokens'],
+                    tokens=[t.replace('▁', ' ') for t in r['logprobs']['tokens']],
                     probs=[np.exp(lp) if lp is not None else lp for lp in r['logprobs']['token_logprobs']],
                     offsets=r['logprobs']['text_offset'],
                     finish_reason='length' if echo else r['finish_reason'],  # never stop in echo mode
@@ -428,10 +433,10 @@ class QueryAgent:
 
             # retrieve
             look_aheads: List[str] = [''] * len(queries)
+            filter_ids = [q.qid.rsplit('_', 1)[0] for i, q in queries]
             if self.look_ahead_steps:  # generate a fixed number tokens for retrieval
                 if (self.look_ahead_pre_retrieval in {'first', 'first-keep'} and step_ind == 0) or self.look_ahead_pre_retrieval == 'all':  # pre-retrieval for look ahead
                     queries_to_issue = [q.get_query_for_retrieval() for i, q in queries]
-                    filter_ids = [q.qid.rsplit('_', 1)[0] for i, q in queries]
                     ctx_ids, ctx_texts = self.retrieve(queries_to_issue, filter_ids=filter_ids, is_question=first_ret)
                     for _i, (i, q) in enumerate(queries):
                         ret_id, ret_text = ctx_ids[_i].tolist(), ctx_texts[_i].tolist()
@@ -478,9 +483,10 @@ class QueryAgent:
                     print(f'Query -> !{queries_to_issue[0]}!')
                 assert len(queries_to_issue) == len(queries)
                 nonemp_queries_to_issue = [q for q in queries_to_issue if q]
+                nonemp_filter_ids = [f for q, f in zip(queries_to_issue, filter_ids) if q]
                 if nonemp_queries_to_issue and (not self.retrieval_at_beginning or first_ret):
                     # (bs, ret_topk) * 2
-                    ctx_ids, ctx_texts = self.retrieve(nonemp_queries_to_issue, is_question=first_ret)
+                    ctx_ids, ctx_texts = self.retrieve(nonemp_queries_to_issue, filter_ids=nonemp_filter_ids, is_question=first_ret)
                     idx = -1
                     for _i, (i, q) in enumerate(queries):
                         if queries_to_issue[_i]:

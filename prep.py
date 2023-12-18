@@ -20,7 +20,7 @@ from datasets import load_dataset, concatenate_datasets, load_from_disk, Dataset
 from beir.datasets.data_loader import GenericDataLoader
 from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.lexical import BM25Search
-from models.datasets import WikiMultiHopQA, WikiAsp, ASQA
+from models.datasets import WikiMultiHopQA, WikiAsp, ASQA, XLSum
 from models.templates import CtxPrompt
 from models.utils import Utils
 import spacy
@@ -139,7 +139,10 @@ def eval(
         examples: List[Dict] = [file[i] for file in examples_all_files]
 
         # aggregate multiple examples with consistency
-        example = self_consistency(examples, anchor_text=anchor_text)
+        if len(examples) > 1:
+            example = self_consistency(examples, anchor_text=anchor_text)
+        else:
+            example = examples[0]
         consistency_examples.append(example)
 
         # get necessary info for evaluation
@@ -193,6 +196,9 @@ def eval(
             elif dataset in {'wikiasp'}:
                 add_metric_kvs(WikiAsp.entity_f1_score(pred_ans, final_ans))
                 print('qid', qid, WikiAsp.entity_f1_score(pred_ans, final_ans))
+            elif dataset in {'xlsum'}:
+                add_metric_kvs(XLSum.entity_f1_score(pred_ans, final_ans))
+                print('qid', qid, XLSum.entity_f1_score(pred_ans, final_ans))
             elif dataset in {'asqa'}:
                 print('qid', qid, ASQA.entity_f1_score(pred_ans, final_ans))
                 add_metric_kvs(ASQA.entity_f1_score(pred_ans, final_ans))
@@ -421,8 +427,7 @@ if __name__ == '__main__':
     parser.add_argument('--inp', type=str, default=None, nargs='+', help='input file')
     parser.add_argument('--dataset', type=str, default='2wikihop', help='input dataset', choices=[
         'strategyqa', '2wikihop', 'wikiasp', 'asqa', 'xlsum'])
-    parser.add_argument('--model', type=str, default='gpt-3.5-turbo-0301', help='model name', choices=[
-        'code-davinci-002', 'gpt-3.5-turbo-0301'])
+    parser.add_argument('--model', type=str, default='gpt-3.5-turbo-0301', help='model name')
     parser.add_argument('--out', type=str, default=None, help='output file')
     args = parser.parse_args()
 

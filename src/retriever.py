@@ -310,9 +310,9 @@ def elasticsearch_lexical_multisearch(self, texts: List[str], filter_ids: List[s
                     },
                     "size": skip + top_hits, # The same paragraph will occur in results
                 }
-            print(json.dumps(req_body, indent=2))
             request.extend([req_head, req_body])
 
+        print(json.dumps(request, indent=2))
         res = self.es.msearch(body = request)
 
         result = []
@@ -323,6 +323,7 @@ def elasticsearch_lexical_multisearch(self, texts: List[str], filter_ids: List[s
             for hit in responses:
                 hits.append((hit["_id"], hit['_score'], hit['_source']['txt']))
 
+            print(f"hit IDs: {' '.join([hit[0] for hit in hits])}")
             result.append(self.hit_template(es_res=resp, hits=hits))
         return result
 
