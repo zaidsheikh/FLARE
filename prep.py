@@ -23,6 +23,7 @@ from beir.retrieval.search.lexical import BM25Search
 from models.datasets import WikiMultiHopQA, WikiAsp, ASQA, XLSum
 from models.templates import CtxPrompt
 from models.utils import Utils
+# from nltk.translate.chrf_score import sentence_chrf, corpus_chrf
 import spacy
 spacy_en = spacy.load('en_core_web_sm')
 
@@ -104,6 +105,7 @@ def eval(
         return ' '.join(final_ans).strip()
 
     metric_func = evaluate.load('rouge')
+    chrf_func = evaluate.load('chrf')
 
     scount = 0
     search_per_example: List[int] = []
@@ -174,6 +176,9 @@ def eval(
 
         references.append(ref)
         predictions.append(pred)
+        # append the first sentence in pred to predictions using spacy_en
+        # pred_first_sent = list(spacy_en(pred).sents)[0].text
+        # predictions.append(pred_first_sent)
         num_steps.append(len(trace))
 
         if retrieval:
@@ -274,12 +279,16 @@ def eval(
     # rouge metrics
     if dataset == 'lmdata':
         metrics = {}
+        chrf_score = -1
     else:
         metrics = metric_func.compute(predictions=predictions, references=references)
+        # chrf_score = corpus_chrf([r.split() for r in references], [p.split() for p in predictions])
+        chrf_score = chrf_func.compute(predictions=predictions, references=[[r] for r in references])
     if remove_followup:
         metrics_followup = metric_func.compute(predictions=followups, references=references)
     print('\t'.join(metrics.keys()))
     print('\t'.join(map(str, metrics.values())))
+    print('chrf\t{:.3f}'.format(chrf_score['score']))
 
     if remove_followup:
         print('\t'.join(metrics_followup.keys()))
